@@ -26,7 +26,7 @@ export function makeHud() {
       els.radio.innerHTML = html;
       radioUntil = performance.now() + seconds * 1000;
     },
-    update(state, aircraft, sortie, weather, now) {
+    update(state, aircraft, sortie, weather, now, combat = null) {
       els.spd.textContent = String(Math.round(msToKnots(state.speed)));
       els.spdSub.textContent = `THR ${Math.round(state.throttle * 100)}%${state.flaps ? ' · FLAPS' : ''}${state.gearDown ? '' : ' · GEAR UP'}`;
       const hdg = ((Math.round(state.heading * 180 / Math.PI) % 360) + 360) % 360;
@@ -58,6 +58,8 @@ export function makeHud() {
       if (state.fuel <= 0) warnings.push('ENGINE STARVED — GLIDE');
       if (!state.onGround && state.verticalSpeed < -7 && state.y < 130) warnings.push('SINK RATE');
       if (state.damage > 70) warnings.push('AIRFRAME CRITICAL');
+      if (combat?.bandits > 0) warnings.push(`BANDITS ${combat.bandits}`);
+      if (combat?.underFire) warnings.push('TAKING FIRE');
       els.warn.textContent = warnings.join(' · ');
       if (now > radioUntil && els.radio.innerHTML) els.radio.innerHTML = '';
     },

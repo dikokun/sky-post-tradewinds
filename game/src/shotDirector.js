@@ -11,6 +11,7 @@ export const SHOTS = {
   approach: { contract: 'first-light', when: 'final', camera: 'chase' },
   cockpit: { contract: 'ash-sample', when: 'climb', camera: 'cockpit' },
   rings: { contract: 'ring-lagoon', when: 'rings', camera: 'chase' },
+  dogfight: { contract: 'pirate-tithe', when: 'dogfight', camera: 'chase' },
   hangar: { contract: null, when: 'menu', camera: 'cine' },
 };
 
@@ -20,7 +21,7 @@ export function stageShot(name, api) {
   const shot = SHOTS[name] ?? SHOTS.approach;
   if (shot.when === 'menu') { api.showHangar(); return { staged: 'hangar' }; }
   const contract = contractById(shot.contract);
-  api.startSortie(contract.id, { forShot: true });
+  api.startSortie(contract.id, { forShot: true, forceGun: shot.when === 'dogfight' });
   api.setCockpit(shot.camera === 'cockpit');
   const dt = 1 / 30;
   let steps = 0;
@@ -46,6 +47,24 @@ export function stageShot(name, api) {
       const r = sortie.rings[2];
       const d = Math.hypot(plane.x - r.x, plane.z - r.z);
       if (d < 430 && plane.speed > 15) break;
+    }
+    if (shot.when === 'dogfight' && sortie.tookOff) {
+      // freeze in the stern chase: the NEAREST live bandit inside 230 m, in the
+      // front hemisphere, the gun already talking — the fight, mid-sentence
+      const raiders = api.raiders?.() ?? [];
+      let live = null, liveD = Infinity;
+      for (const r of raiders) {
+        if (r.state !== 'hunt' && r.state !== 'loiter') continue;
+        const d = Math.hypot(plane.x - r.x, plane.z - r.z);
+        if (d < liveD) { liveD = d; live = r; }
+      }
+      if (live) {
+        const bearing = Math.atan2(live.x - plane.x, -(live.z - plane.z));
+        let err = bearing - plane.heading;
+        while (err > Math.PI) err -= Math.PI * 2;
+        while (err < -Math.PI) err += Math.PI * 2;
+        if (liveD < 230 && Math.abs(err) < 0.6 && plane.speed > 20) break;
+      }
     }
     if (plane.damage >= 100) break;
   }

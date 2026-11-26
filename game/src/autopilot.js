@@ -68,6 +68,17 @@ export function planPhotoCourse(sortie, fromIsland, toIsland, aircraft) {
   return { legs, dest: landing.dest };
 }
 
+// An intercept plan: climb out, then a chase leg whose target the conductor keeps
+// moving onto the nearest live raider, then the normal landing plan once the sky
+// is clear (the conductor calls skipTo('approach') when the last bandit falls).
+export function planInterceptCourse(sortie, fromIsland, toIsland, aircraft) {
+  const landing = planFlight(fromIsland, toIsland, aircraft);
+  const legs = [landing.legs[0],
+    { x: toIsland.x, z: toIsland.z, alt: 260, speed: aircraft.stallSpeed * 2.5, kind: 'chase' },
+    ...landing.legs.slice(2)];
+  return { legs, dest: landing.dest };
+}
+
 export function makeAutopilot(plan, aircraft) {
   let legIndex = 0;
   let hasAirborne = false;
@@ -77,6 +88,16 @@ export function makeAutopilot(plan, aircraft) {
   return {
     get legIndex() { return legIndex; },
     get done() { return legIndex >= plan.legs.length; },
+    // move the chase leg onto a live target (intercept flying)
+    retarget(x, z, alt) {
+      const leg = plan.legs[legIndex];
+      if (leg && leg.kind === 'chase') { leg.x = x; leg.z = z; leg.alt = alt; }
+    },
+    // jump forward to the first leg of a kind (the sky just cleared — go land)
+    skipTo(kind) {
+      const i = plan.legs.findIndex((l, j) => j >= legIndex && l.kind === kind);
+      if (i >= 0) { legIndex = i; legTime = 0; bestDist = Infinity; stuckTime = 0; }
+    },
     input(state, dt) {
       const input = { pitch: 0, roll: 0, throttleDelta: 0 };
       const leg = plan.legs[legIndex];
@@ -105,8 +126,10 @@ export function makeAutopilot(plan, aircraft) {
       if (dist < bestDist - 2) { bestDist = dist; stuckTime = 0; } else stuckTime += dt;
       // glide and final resolve on the ground or not at all — never abandoned.
       // Approach keeps the stuck escape (its fix can be orbited like any waypoint)
-      // but not the clock: a long honest approach is still an approach.
-      const abandonable = leg.kind !== 'glide' && leg.kind !== 'final';
+      // but not the clock: a long honest approach is still an approach. A chase
+      // leg is never abandoned either: a stern chase can run minutes without the
+      // range closing, and the conductor ends it when the sky clears.
+      const abandonable = leg.kind !== 'glide' && leg.kind !== 'final' && leg.kind !== 'chase';
       if (abandonable && (stuckTime > 12 || (legTime > 300 && leg.kind !== 'approach'))) {
         legIndex++; legTime = 0; bestDist = Infinity; stuckTime = 0;
         return input;
@@ -152,7 +175,8 @@ export function makeAutopilot(plan, aircraft) {
       input.throttleDelta = (leg.kind === 'final' && dist < 150) ? -1 : clamp(spdErr * 0.05, -0.7, 0.7);
 
       let reached = false;
-      if (leg.kind === 'ring') reached = dist < 60;
+      if (leg.kind === 'chase') reached = false; // flown until the conductor says the sky is clear
+      else if (leg.kind === 'ring') reached = dist < 60;
       else if (leg.kind === 'approach') reached = dist < 170 && Math.abs(altErr) < 70;
       else if (leg.kind === 'glide') reached = dist < 60;
       // the final leg is flown to the ground, never abandoned on proximity:

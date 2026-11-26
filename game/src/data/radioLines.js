@@ -31,6 +31,17 @@ export const RADIO = {
     'Talk to me, pilot — that descent is getting steep.',
     'Ground\'s closer than it looks over water. Eyes up.',
   ],
+  bandits: [
+    'Bandits on the scope — somebody\'s collecting a toll today. Shake them or splash them.',
+    'Raiders, pilot. They want your cargo. Don\'t let them invoice you.',
+  ],
+  splash: [
+    'Splash one! The Reach breathes easier.',
+    'That\'s one less toll collector. Beautiful.',
+  ],
+  skiesclear: [
+    'Skies are clear, pilot. The divers send their thanks.',
+  ],
 };
 
 export function radioLine(kind, rng) {

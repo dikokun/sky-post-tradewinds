@@ -23,7 +23,9 @@ import { recordSortie, buyAircraft, buyUpgrade } from './career.js';
 import { renderHangar, renderResults } from './screens.js';
 import { radioLine } from './data/radioLines.js';
 import { makeRng } from './random.js';
-import { planFlight, planRingCourse, planPhotoCourse, makeAutopilot } from './autopilot.js';
+import { planFlight, planRingCourse, planPhotoCourse, planInterceptCourse, makeAutopilot } from './autopilot.js';
+import { createRaiders, stepRaiders, nearestRaider, liveRaiders } from './raiders.js';
+import { createGun, stepGun, autopilotFire } from './weapons.js';
 import { stageShot } from './shotDirector.js';
 import { ECONOMY } from './config.js';
 
@@ -53,7 +55,10 @@ let mode = 'menu';
 let plane = null, fitted = null, aircraftView = null, sortie = null, props = null;
 let weatherLive = null, autopilot = null, frozen = false, paused = false;
 let groundBill = 0, lastTouchWater = false, elapsed = 0, menuAngle = 0;
+let raiders = [], raiderViews = [], gun = null, tracerView = null;
+let underFireT = -9, stagingShot = false;
 const shotRng = makeRng(1740);
+const RAIDER_PAINT = { id: 'minnow', name: 'Raider', colour: 0x39424a, accent: 0xc62f3b };
 
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
@@ -69,6 +74,7 @@ function showHangar() {
   menuEl.classList.remove('hidden');
   resultsEl.classList.add('hidden');
   hud.hide();
+  document.body.classList.remove('armed');
   setPanel(false);
   renderHangar(menuEl, career, {
     fly: (id) => { audio.start(); startSortie(id); },
@@ -99,6 +105,42 @@ function parkBackdropPlane() {
 function clearAircraft() {
   if (aircraftView) { scene.remove(aircraftView.group); aircraftView = null; }
   if (props) { scene.remove(props); props = null; }
+  for (const v of raiderViews) scene.remove(v.group);
+  raiderViews = [];
+  if (tracerView) { scene.remove(tracerView); tracerView = null; }
+}
+
+// The bandits wear a dark Kestrel with a red tail — the same mesh builder as the
+// player's planes, painted like trouble.
+function syncRaiderViews() {
+  for (let i = 0; i < raiders.length; i++) {
+    const r = raiders[i], v = raiderViews[i];
+    if (!v) continue;
+    v.group.visible = r.state !== 'gone';
+    poseAircraft(v.group, v.parts,
+      { ...r, throttle: r.state === 'falling' ? 0.1 : 0.8, gearDown: true, buffet: 0, onGround: false }, elapsed);
+  }
+}
+
+function buildTracerView() {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(240 * 3).fill(-9999);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xffd27a, size: 3, sizeAttenuation: false, transparent: true, opacity: 0.95,
+  }));
+  pts.frustumCulled = false;
+  return pts;
+}
+
+function syncTracers() {
+  if (!tracerView || !gun) return;
+  const attr = tracerView.geometry.getAttribute('position');
+  for (let i = 0; i < 240; i++) {
+    const tr = gun.tracers[i];
+    if (tr) attr.setXYZ(i, tr.x, tr.y, tr.z); else attr.setXYZ(i, 0, -9999, 0);
+  }
+  attr.needsUpdate = true;
 }
 
 // ---------- sorties ----------
@@ -106,6 +148,8 @@ function startSortie(contractId, opts = {}) {
   const contract = contractById(contractId);
   const base = aircraftById(career.activeAircraft);
   fitted = fitAircraft(base, career.upgrades[base.id]);
+  if (opts.forceGun) fitted = { ...fitted, gun: true }; // a staged save that owns the pod
+  stagingShot = !!opts.forShot;
   clearAircraft();
   aircraftView = buildAircraftMesh(base);
   scene.add(aircraftView.group);
@@ -117,6 +161,12 @@ function startSortie(contractId, opts = {}) {
   plane = createPlaneState(fitted, pose.x - fx * startBack, pose.z - fz * startBack, pose.heading, pose.y);
   sortie = createSortie(contract, 1000 + career.stats.flights * 7 + (opts.seed ?? 0));
   props = buildSortieProps(sortie, scene);
+  raiders = createRaiders(contract, sortie.rng);
+  raiderViews = raiders.map(() => { const v = buildAircraftMesh(RAIDER_PAINT); scene.add(v.group); return v; });
+  gun = createGun();
+  tracerView = buildTracerView();
+  scene.add(tracerView);
+  underFireT = -9;
   weatherLive = makeWeather(contract.weather, shotRng);
   world.setTimeOfDay(contract.timeOfDay);
   world.setFogDistance(WEATHER[contract.weather].fog);
@@ -124,15 +174,18 @@ function startSortie(contractId, opts = {}) {
   autopilot = opts.autopilot
     ? makeAutopilot(contract.type === 'rings' ? planRingCourse(sortie, from, fitted)
       : contract.type === 'photo' ? planPhotoCourse(sortie, from, islandById(contract.to), fitted)
+      : contract.type === 'intercept' ? planInterceptCourse(sortie, from, islandById(contract.to), fitted)
       : planFlight(from, islandById(contract.to), fitted), fitted)
     : null;
   frozen = false; paused = false;
   cameras.setCockpit(false);
   setPanel(false);
+  document.body.classList.toggle('armed', !!fitted.gun);
   menuEl.classList.add('hidden');
   resultsEl.classList.add('hidden');
   hud.show();
-  const kind = contract.weather === 'ash' ? 'ash' : contract.tide ? 'tide' : contract.weather === 'squall' ? 'squall' : 'launch';
+  const kind = contract.raiders ? 'bandits'
+    : contract.weather === 'ash' ? 'ash' : contract.tide ? 'tide' : contract.weather === 'squall' ? 'squall' : 'launch';
   hud.say(`<b>Mags:</b> “${radioLine(kind, shotRng)}”`, 7);
   document.getElementById('status').textContent = `${contract.name}: ${contract.brief}`;
   mode = 'fly';
@@ -182,10 +235,46 @@ function step(dt, dropPressed = false) {
     const exposure = ashExposure(plane.x, plane.y, plane.z);
     if (exposure > 0 && !plane.onGround) plane.damage = Math.min(100, plane.damage + exposure * dt * 1.1);
   }
-  const mEvents = updateSortie(sortie, plane, dt, { dropPressed }, env);
+  // --- combat: the raiders hunt the mail plane; the gun pod answers ---
+  let nearest = null;
+  if (raiders.length) {
+    const rEvents = stepRaiders(raiders, plane, dt, (x, z) => Math.max(heightAt(x, z), 0), elapsed);
+    for (const ev of rEvents) {
+      if (ev.type === 'down') {
+        sortie.raidersDown++;
+        audio.splash();
+        hud.say(`<b>Mags:</b> “${radioLine('splash', shotRng)}”`, 5);
+      }
+      if (ev.type === 'player-hit') {
+        plane.damage = Math.min(100, plane.damage + ev.amount);
+        underFireT = elapsed;
+        audio.alarm();
+      }
+    }
+    nearest = nearestRaider(raiders, plane);
+    if (autopilot && sortie.contract.type === 'intercept') {
+      if (nearest) autopilot.retarget(nearest.raider.x, nearest.raider.z, nearest.raider.y);
+      else autopilot.skipTo('approach');
+    }
+  }
+  if (gun && fitted.gun) {
+    const firing = autopilot ? autopilotFire(plane, nearest?.raider) : controls.held(' ');
+    const gEvents = stepGun(gun, plane, firing, dt, raiders);
+    for (const ev of gEvents) {
+      if (ev.type === 'hit' || ev.type === 'kill') audio.hit();
+      else if (ev.type === 'shot' && !autopilot) audio.shot();
+    }
+  }
+  if (!stagingShot && plane.damage >= 100 && !plane.onGround
+    && sortie.phase !== 'complete' && sortie.phase !== 'failed') {
+    endSortie(failSortie(sortie, 'Shot down over the Reach. The raiders send the wreckage a receipt.'), true);
+    return;
+  }
+  const mEvents = updateSortie(sortie, plane, dt, { dropPressed, nearestRaider: nearest?.raider ?? null }, env);
   for (const ev of mEvents) {
     if (ev.type === 'ring') { audio.ring(); hud.say(`Ring ${ev.count} threaded.`, 3); }
     if (ev.type === 'photo') { audio.ring(); hud.say(`Photograph ${ev.count} in the can.`, 3); }
+    if (ev.type === 'skies-clear') { audio.cash(); hud.say(`<b>Mags:</b> “${radioLine('skiesclear', shotRng)}”`, 6); }
     if (ev.type === 'dropped') { audio.cash(); hud.say(`Supplies away — accuracy ${Math.round(ev.score * 100)}%.`, 4); }
     if (ev.type === 'drop-denied') hud.say('Too high, too fast, or off the zone — set up again.', 3);
     if (ev.type === 'failed') endSortie(sortie.result);
@@ -274,7 +363,10 @@ function frame(now) {
       const propVisible = !cameras.cockpit;
       if (aircraftView.parts.prop) aircraftView.parts.prop.visible = propVisible;
       if (aircraftView.parts.props) for (const p of aircraftView.parts.props) p.visible = propVisible;
-      hud.update(plane, fitted, sortie, weatherLive, now);
+      syncRaiderViews();
+      syncTracers();
+      hud.update(plane, fitted, sortie, weatherLive, now,
+        { bandits: liveRaiders(raiders), underFire: elapsed - underFireT < 1.6 });
       if (cameras.cockpit) panel.draw(plane, fitted);
       audio.update(plane);
     }
@@ -292,6 +384,7 @@ if (params.get('shot')) {
     step: (dt) => { step(dt); if (plane) cameras.update(plane, dt); },
     setCockpit: (v) => { cameras.setCockpit(v); setPanel(v); },
     plane: () => plane, sortie: () => sortie, legIndex: () => autopilot?.legIndex ?? 0,
+    raiders: () => raiders,
     setFrozen: (v) => { frozen = v; },
     showHangar: () => { showHangar(); },
   });

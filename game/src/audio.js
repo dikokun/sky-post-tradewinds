@@ -50,6 +50,9 @@ export function makeAudio() {
     touchdown(hard) { blip(hard ? 90 : 130, 0.18, 'triangle', hard ? 0.3 : 0.16); },
     cash() { blip(990, 0.1, 'sine', 0.12); blip(1320, 0.14, 'sine', 0.12, 0.08); },
     alarm() { blip(620, 0.14, 'square', 0.08); blip(620, 0.14, 'square', 0.08, 0.2); },
+    shot() { blip(170, 0.045, 'square', 0.045); },
+    hit() { blip(340, 0.05, 'square', 0.07); },
+    splash() { blip(520, 0.3, 'sawtooth', 0.1); blip(196, 0.5, 'sawtooth', 0.12, 0.16); blip(90, 0.4, 'triangle', 0.14, 0.34); },
     crash() { blip(60, 0.7, 'sawtooth', 0.3); blip(45, 0.9, 'square', 0.22, 0.05); },
   };
 }

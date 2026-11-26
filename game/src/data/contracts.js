@@ -1,4 +1,4 @@
-// The twelve contracts of the Kaldera Reach. A contract is data: the mission engine
+// The thirteen contracts of the Kaldera Reach. A contract is data: the mission engine
 // reads its type and flies the same rules for all of them — cargo and passengers land
 // at the destination, rings thread a course, drops and photos score a pass over a
 // point, and the special rules (night, tide, storm, fragile) ride along as flags.
@@ -7,6 +7,7 @@
 export const CONTRACT_TYPES = {
   cargo: 'Cargo run', passenger: 'Passenger hop', rings: 'Ring course',
   drop: 'Supply drop', photo: 'Photo recon', medical: 'Med-evac', tour: 'Grand tour',
+  intercept: 'Intercept',
 };
 
 export const CONTRACTS = [
@@ -32,17 +33,20 @@ export const CONTRACTS = [
     cargo: 'Three passes for the observatory cameras', pay: 640, rep: 2, minRank: 2, timeOfDay: 'dusk', weather: 'ash',
     brief: 'Three rim passes at dusk. Thermals will throw you upward — ride them, do not fight them.' },
   { id: 'collector', name: 'The Collector', type: 'passenger', from: 'nalu', to: 'fenwick',
-    cargo: 'One collector of rare stamps', pay: 700, rep: 3, minRank: 2, timeOfDay: 'day', weather: 'calm', tide: true, gentle: true,
-    brief: 'He insists on Folly Field. The tide is coming in — land before the strip goes under, and land soft.' },
+    cargo: 'One collector of rare stamps', pay: 700, rep: 3, minRank: 2, timeOfDay: 'day', weather: 'calm', tide: true, gentle: true, raiders: 1,
+    brief: 'He insists on Folly Field. The tide is coming in — land before the strip goes under, and land soft. A raider has been taxing the Folly run; a gun pod settles that.' },
   { id: 'storm-post', name: 'Storm Post', type: 'cargo', from: 'nalu', to: 'temara',
-    cargo: 'Medical supplies for the research station', pay: 860, rep: 3, minRank: 2, timeOfDay: 'day', weather: 'squall',
-    brief: 'A White Squall sits on Temara. Low visibility, downdrafts under the cloud. Low and slow, or not at all.' },
+    cargo: 'Medical supplies for the research station', pay: 860, rep: 3, minRank: 2, timeOfDay: 'day', weather: 'squall', raiders: 2,
+    brief: 'A White Squall sits on Temara — and raiders ride its edge, taxing the storm route. Low visibility, downdrafts, company. Low and slow, or not at all.' },
+  { id: 'pirate-tithe', name: 'Pirate Tithe', type: 'intercept', from: 'nalu', to: 'oru',
+    cargo: 'Three raiders taxing the Oru divers', pay: 900, rep: 4, minRank: 2, timeOfDay: 'dusk', weather: 'haze', raiders: 3,
+    brief: 'Sky raiders are collecting a tithe from the pearl divers. Splash all three — a gun pod is not optional — then land on the sand and tell Oru the sky is theirs again.' },
   { id: 'chapel-bells', name: 'Chapel Bells', type: 'cargo', from: 'seralune', to: 'temara',
     cargo: 'Two glass bells, packed in straw', pay: 820, rep: 3, minRank: 2, timeOfDay: 'dawn', weather: 'haze', gentle: true, fragile: true,
     brief: 'Glass bells for the station chapel. One hard landing and you are delivering gravel.' },
   { id: 'high-tide', name: 'High Tide Pickup', type: 'medical', from: 'fenwick', to: 'nalu',
-    cargo: 'A surveyor with a broken leg', pay: 980, rep: 4, minRank: 3, timeOfDay: 'dusk', weather: 'squall', tide: true, timed: 600,
-    brief: 'The Folly is sinking under the tide and the window shrinks by the minute. In, stopped, out.' },
+    cargo: 'A surveyor with a broken leg', pay: 980, rep: 4, minRank: 3, timeOfDay: 'dusk', weather: 'squall', tide: true, timed: 600, raiders: 2,
+    brief: 'The Folly is sinking under the tide, the window shrinks by the minute, and raiders circle a wounded plane like gulls. In, stopped, out.' },
   { id: 'long-way', name: 'The Long Way Home', type: 'tour', from: 'nalu', to: 'nalu',
     cargo: 'The full circuit — mail for every island', pay: 2400, rep: 6, minRank: 3, timeOfDay: 'dusk', weather: 'calm',
     brief: 'All eight islands, one tank of planning, home by sunset. The Reach, whole. This is the job.' },

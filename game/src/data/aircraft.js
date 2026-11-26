@@ -33,6 +33,8 @@ export const UPGRADES = [
     apply: (a) => ({ ...a, toughGear: true }) },
   { id: 'avionics', name: 'Glass Avionics', desc: 'A flight-path marker joins the HUD.', price: 620,
     apply: (a) => ({ ...a, glassAvionics: true }) },
+  { id: 'gunpod', name: 'Wing Gun Pod', desc: 'A .50-cal wing gun — hold Space to fire. The raiders\' toll ends here.', price: 800,
+    apply: (a) => ({ ...a, gun: true }) },
 ];
 
 export function fitAircraft(base, upgradeIds) {

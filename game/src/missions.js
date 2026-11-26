@@ -17,6 +17,7 @@ export function createSortie(contract, seed) {
     rings: [], ringIndex: 0,
     photoPasses: 0, photoInside: false,
     dropped: false, dropScore: 0,
+    raidersDown: 0,
     visited: new Set([contract.from]),
     landingGrade: null, worstSinkFpm: 0, comfortViolations: 0,
     ashTime: 0, failed: null, result: null,
@@ -105,6 +106,19 @@ export function updateSortie(sortie, plane, dt, input, env) {
     sortie.photoInside = inside;
   }
 
+  if (c.type === 'intercept') {
+    const need = c.raiders ?? 0;
+    if (sortie.raidersDown >= need && sortie.phase !== 'objective-done') {
+      sortie.phase = 'objective-done';
+      events.push({ type: 'skies-clear' });
+      const p = runwayPose(sortie.to);
+      sortie.target = { x: p.x, y: p.y, z: p.z };
+    } else if (input.nearestRaider) {
+      const r = input.nearestRaider;
+      sortie.target = { x: r.x, y: r.y, z: r.z };
+    }
+  }
+
   if (c.type === 'drop' && !sortie.dropped && input.dropPressed) {
     const d = distTo(sortie.target);
     if (plane.y - sortie.target.y < 130 && plane.speed < 42) {
@@ -148,6 +162,10 @@ export function settleSortie(sortie, plane, surface) {
     if (atDest || atOrigin) return fail(sortie, 'Landed with the supplies still aboard.');
     return null;
   }
+  if (c.type === 'intercept' && sortie.phase !== 'objective-done') {
+    if (atDest || atOrigin) return fail(sortie, 'Down with raiders still taxing the Reach. The divers keep paying.');
+    return null;
+  }
   if (atDest) return finish(sortie, plane);
   if (surface.onWater && c.to === 'motu') return finish(sortie, plane); // the dock accepts a seaplane
   return null;
@@ -182,6 +200,11 @@ function finish(sortie, plane) {
     lines.push({ label: `Drop accuracy ${Math.round(sortie.dropScore * 100)}%`, amount: bonus }); total += bonus;
   }
   if (c.type === 'rings') { lines.push({ label: 'Full course threaded', amount: 140 }); total += 140; }
+  if (sortie.raidersDown > 0) {
+    const bonus = 150 * sortie.raidersDown;
+    lines.push({ label: `Raider${sortie.raidersDown > 1 ? 's' : ''} splashed ×${sortie.raidersDown}`, amount: bonus });
+    total += bonus;
+  }
   if (plane.damage > 25) {
     lines.push({ label: 'Airframe came home bent (repair is on you)', amount: 0 });
   }
@@ -206,6 +229,8 @@ export function sortieStatusLine(sortie, plane) {
   else if (c.type === 'drop') line = sortie.dropped
     ? `Supplies away — land at ${sortie.to.name}` : `Drop zone ${km} km — low, slow, press X`;
   else if (c.type === 'tour') line = `Circuit: ${sortie.visited.size} of 8 islands — next landing anywhere new`;
+  else if (c.type === 'intercept') line = sortie.phase === 'objective-done'
+    ? `Skies clear — land at ${sortie.to.name}` : `Bandits down: ${sortie.raidersDown} of ${c.raiders ?? 0} — nearest ${km} km`;
   else line = `${c.cargo} → ${sortie.to.name}, ${km} km`;
   if (c.timed && sortie.tookOff) {
     const left = Math.max(0, Math.round(c.timed - sortie.elapsed));
