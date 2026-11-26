@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Post: Tradewinds — an archipelago flight game</title>
+<style>
+  :root {
+    --ink: #12303c; --deep: #0b2230; --cream: #f6ecd7; --paper: #fff8ea;
+    --teal: #12736e; --teal-dark: #0c4f4c; --sun: #f2a541; --signal: #e4572e;
+    --good: #2e933c; --bad: #c62f3b; --line: #d8c9a3;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--deep);
+    font-family: "Avenir Next", "Segoe UI", Verdana, sans-serif; color: var(--ink); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hidden { display: none !important; }
+
+  /* ---------- flight HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  .tape { position: absolute; background: rgba(9, 32, 43, .82); color: var(--cream);
+    border: 1px solid rgba(246, 236, 215, .35); border-radius: 6px; padding: 6px 10px; }
+  .tape .lab { font-size: 10px; letter-spacing: .14em; opacity: .75; }
+  .tape .val { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .tape .unit { font-size: 11px; opacity: .75; }
+  #tape-alt { right: 18px; top: 50%; transform: translateY(-50%); text-align: right; }
+  #tape-spd { left: 18px; top: 50%; transform: translateY(-50%); }
+  #tape-hdg { left: 50%; top: 14px; transform: translateX(-50%); text-align: center; min-width: 128px; }
+  #tape-hdg .val { font-size: 20px; }
+  #mission { left: 18px; top: 14px; max-width: 320px; }
+  #mission .name { font-weight: 700; font-size: 14px; color: var(--sun); }
+  #mission .line { font-size: 12px; margin-top: 2px; }
+  #mission .bar { height: 6px; background: rgba(246,236,215,.2); border-radius: 3px; margin-top: 5px; }
+  #mission .bar i { display: block; height: 100%; background: var(--sun); border-radius: 3px; }
+  #systems { right: 18px; top: 14px; width: 168px; }
+  #systems .row { display: flex; align-items: center; gap: 6px; font-size: 11px; margin-top: 4px; }
+  #systems .row:first-child { margin-top: 0; }
+  #systems .meter { flex: 1; height: 8px; background: rgba(246,236,215,.18); border-radius: 4px; overflow: hidden; }
+  #systems .meter i { display: block; height: 100%; }
+  #fuel-fill { background: var(--sun); } #dmg-fill { background: var(--good); }
+  #radio { left: 50%; bottom: 92px; transform: translateX(-50%); max-width: 560px; text-align: center;
+    font-size: 14px; font-style: italic; }
+  body.cockpit #radio { bottom: 258px; }
+  body.cockpit #keys { display: none; }
+  #radio b { color: var(--sun); font-style: normal; }
+  #warn { left: 50%; top: 76px; transform: translateX(-50%); text-align: center; color: #ffb3ab;
+    font-weight: 700; letter-spacing: .08em; font-size: 15px; background: rgba(90, 12, 18, .72); }
+  #warn:empty { display: none; }
+  #keys { left: 50%; bottom: 12px; transform: translateX(-50%); font-size: 11px; opacity: .92; white-space: nowrap; }
+  #keys b { color: var(--sun); }
+
+  /* ---------- screens (hangar, results) ---------- */
+  .screen { position: fixed; inset: 0; overflow: auto; background:
+    linear-gradient(180deg, rgba(9,32,43,.88), rgba(9,32,43,.94)); color: var(--cream); }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 26px 28px 40px; }
+  h1.title { font-family: Georgia, "Times New Roman", serif; font-size: 52px; margin: 0; letter-spacing: .02em;
+    color: var(--cream); text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+  h1.title .post { color: var(--sun); }
+  .tagline { font-style: italic; opacity: .85; margin: 4px 0 0; font-size: 16px; }
+  .strip { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
+  .chip { background: rgba(246,236,215,.1); border: 1px solid rgba(246,236,215,.3); border-radius: 6px;
+    padding: 8px 12px; font-size: 13px; }
+  .chip b { color: var(--sun); font-size: 17px; }
+  h2.sec { font-size: 15px; letter-spacing: .16em; text-transform: uppercase; color: var(--sun);
+    border-bottom: 1px solid rgba(246,236,215,.25); padding-bottom: 5px; margin: 22px 0 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+  .card { background: var(--paper); color: var(--ink); border-radius: 8px; padding: 12px 14px;
+    border-top: 5px solid var(--teal); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .card.locked { opacity: .55; border-top-color: #777; }
+  .card.sel { outline: 3px solid var(--sun); }
+  .card h3 { margin: 0 0 2px; font-size: 16px; }
+  .card .sub { font-size: 12px; color: #5c6a70; margin-bottom: 6px; }
+  .card p { margin: 4px 0; font-size: 13px; }
+  .card .pay { font-weight: 700; color: var(--teal-dark); }
+  .card button, .bigbtn { pointer-events: auto; cursor: pointer; border: 0; border-radius: 6px;
+    background: var(--signal); color: #fff; font-weight: 700; padding: 8px 14px; font-size: 14px; margin-top: 8px; }
+  .card button.alt, .bigbtn.alt { background: var(--teal); }
+  .card button:disabled { background: #9aa5a8; cursor: default; }
+  .bigbtn { font-size: 17px; padding: 12px 22px; }
+  .medals { display: flex; gap: 8px; flex-wrap: wrap; }
+  .medal { border: 1px solid var(--line); background: rgba(246,236,215,.08); border-radius: 20px;
+    padding: 5px 12px; font-size: 12px; }
+  .medal.earned { background: var(--sun); color: var(--ink); border-color: var(--sun); font-weight: 700; }
+  table.stats { border-collapse: collapse; font-size: 14px; }
+  table.stats td { padding: 4px 18px 4px 0; }
+  table.stats td:last-child { font-weight: 700; color: var(--sun); text-align: right; }
+  .fineprint { font-size: 12px; opacity: .7; margin-top: 16px; line-height: 1.5; }
+  kbd { background: rgba(246,236,215,.16); border: 1px solid rgba(246,236,215,.4); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 5px; font-family: inherit; font-size: 11px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="Tradewind Post flight game: fly a courier plane between archipelago islands"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud" class="hidden">
+  <div class="tape" id="mission"><div class="name"></div><div class="line"></div><div class="bar"><i></i></div></div>
+  <div class="tape" id="tape-spd"><div class="lab">AIRSPEED</div><div><span class="val">0</span> <span class="unit">kt</span></div><div class="lab" id="spd-sub">THR 0%</div></div>
+  <div class="tape" id="tape-hdg"><div class="lab">HEADING</div><div class="val">000°</div><div class="lab" id="hdg-sub">—</div></div>
+  <div class="tape" id="tape-alt"><div class="lab">ALTITUDE</div><div><span class="val">0</span> <span class="unit">ft</span></div><div class="lab" id="alt-sub">VS 0 fpm</div></div>
+  <div class="tape" id="systems">
+    <div class="row"><span>FUEL</span><div class="meter"><i id="fuel-fill"></i></div><span id="fuel-num"></span></div>
+    <div class="row"><span>AIRFRAME</span><div class="meter"><i id="dmg-fill"></i></div><span id="dmg-num"></span></div>
+    <div class="row"><span id="wx-line">—</span></div>
+  </div>
+  <div class="tape" id="warn"></div>
+  <div class="tape" id="radio"></div>
+  <div class="tape" id="keys"><b>↑↓</b> pitch · <b>←→</b> bank · <b>Shift/Ctrl</b> throttle · <b>G</b> gear · <b>F</b> flaps · <b>B</b> brakes · <b>X</b> drop · <b>C</b> camera · <b>P</b> pause</div>
+</div>
+
+<canvas id="panel" class="hidden" style="position:fixed;left:50%;transform:translateX(-50%);bottom:34px;width:min(1180px,96vw);height:auto;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);pointer-events:none"></canvas>
+
+<div id="menu" class="screen"></div>
+<div id="results" class="screen hidden"></div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
